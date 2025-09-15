@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ride-Hailing App — Single-Server (Singleton)</title>
+  <style>
+    /* Simple, modern responsive styling */
+    :root{
+      --accent:#0066ff;
+      --muted:#666;
+      --card:#fff;
+      --bg:#f4f7fb;
+      --glass: rgba(255,255,255,0.6);
+      --shadow: 0 6px 18px rgba(10,20,40,0.08);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,var(--bg),#eef3fb);color:#123;}
+
+    header{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;background:transparent}
+    .brand{display:flex;gap:12px;align-items:center}
+    .logo{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#00b4ff);display:flex;align-items:center;justify-content:center;color:white;font-weight:700}
+    h1{font-size:18px;margin:0}
+    .container{max-width:1100px;margin:20px auto;padding:20px}
+
+    .grid{display:grid;grid-template-columns:1fr 360px;gap:20px}
+    @media (max-width:900px){.grid{grid-template-columns:1fr} .right-col{order:2}}
+
+    .card{background:var(--card);border-radius:12px;padding:18px;box-shadow:var(--shadow)}
+    .panel-title{font-size:16px;margin:0 0 8px 0}
+
+    .form-row{display:flex;gap:8px;margin-bottom:10px}
+    input,select,button{padding:10px;border-radius:8px;border:1px solid #e2e8f0;outline:none;font-size:14px}
+    input:focus,select:focus{box-shadow:0 0 0 4px rgba(0,102,255,0.08)}
+    button{cursor:pointer;background:var(--accent);color:white;border:none}
+    .muted{color:var(--muted);font-size:13px}
+
+    .rides-list{display:flex;flex-direction:column;gap:10px}
+    .ride{border-radius:10px;padding:12px;border:1px solid #eef2ff;background:linear-gradient(180deg,#ffffff,#fbfdff)}
+    .ride .meta{display:flex;justify-content:space-between;align-items:center}
+    .small{font-size:13px;color:var(--muted)}
+
+    .map{height:320px;border-radius:12px;background:linear-gradient(180deg,#e9f2ff,#fff);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px}
+
+    footer{max-width:1100px;margin:20px auto;color:var(--muted);font-size:13px;text-align:center}
+
+    /* Controls */
+    .actions{display:flex;gap:8px}
+
+    /* status labels */
+    .label{padding:6px 8px;border-radius:999px;font-size:12px}
+    .label.pending{background:#fff7e6;color:#8a5600}
+    .label.onroute{background:#e7f8ef;color:#0b7a3a}
+    .label.completed{background:#f0f5ff;color:#223}
+
+    /* Responsive tweaks */
+    @media (max-width:420px){.form-row{flex-direction:column}}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo">RH</div>
+      <div>
+        <h1>RideHub — Demo</h1>
+        <div class="muted">Single-server demo using Singleton design pattern</div>
+      </div>
+    </div>
+    <div class="muted">Server: <strong id="server-state">not initialized</strong></div>
+  </header>
+
+  <main class="container">
+    <div class="grid">
+      <div>
+        <div class="card">
+          <h2 class="panel-title">Request a Ride</h2>
+          <div class="muted">Simulate a rider requesting a trip. The single server instance manages state and transactions.</div>
+          <div style="height:12px"></div>
+
+          <div class="form-row">
+            <input id="rider-name" placeholder="Your name" />
+            <select id="car-type"><option value="auto">Auto</option><option value="sedan">Sedan</option><option value="suv">SUV</option></select>
+          </div>
+          <div class="form-row">
+            <input id="pickup" placeholder="Pickup (e.g., MG Road)" />
+            <input id="drop" placeholder="Drop (e.g., Airport)" />
+          </div>
+          <div class="form-row">
+            <button id="request-btn">Request Ride</button>
+            <button id="init-server">Initialize Server</button>
+            <button id="reset-server" style="background:#e2e8f0;color:#123">Reset Server</button>
+          </div>
+        </div>
+
+        <div style="height:16px"></div>
+
+        <div class="card">
+          <h2 class="panel-title">Active Rides</h2>
+          <div id="rides" class="rides-list">
+            <!-- ride items injected here -->
+          </div>
+        </div>
+
+      </div>
+
+      <aside class="right-col">
+        <div class="card">
+          <h2 class="panel-title">Server Console</h2>
+          <div class="muted">Actions performed by the (singleton) server are logged here.</div>
+          <pre id="console" style="height:220px;overflow:auto;margin-top:12px;background:var(--glass);padding:12px;border-radius:8px"></pre>
+          <div style="height:10px"></div>
+          <div class="map">Map placeholder — integrate real maps (Leaflet/Google) in production</div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <footer>Example implementation demonstrating a single instance server (Singleton pattern). Not production-ready — for learning only.</footer>
+
+  <script>
+    /*******************************************************************
+     * Simple Singleton "Server" in JavaScript with a private-style constructor
+     *
+     * JavaScript doesn't have truly private constructors like some languages
+     * (e.g., C# 'private' constructor), but we can emulate it by:
+     *  - keeping a private static token and allowing constructor only when
+     *    provided that token (which only getInstance knows)
+     *  - preventing direct `new Server()` usage by throwing otherwise.
+     *
+     * The Server exposes: getInstance(), requestRide(data), listRides(),
+     * updateRideStatus(id, status), reset()
+     *******************************************************************/
+
+    class Server {
+      // private static slots (proposal-style) using naming convention
+      static #instance = null;            // holds the singleton instance
+      static #constructorToken = Symbol('server-token'); // secret token
+
+      constructor(token) {
+        // enforce "private" constructor: only code that passes the exact token can construct
+        if (token !== Server.#constructorToken) {
+          throw new Error('Server constructor is private. Use Server.getInstance()');
+        }
+
+        // --- server state ---
+        this._rides = new Map(); // rideId -> rideData
+        this._nextId = 1;
+        this._log = [];
+
+        this._logEvent('Server instance created');
+      }
+
+      static getInstance() {
+        if (!Server.#instance) {
+          Server.#instance = new Server(Server.#constructorToken);
+        }
+        return Server.#instance;
+      }
+
+      // create a new ride request
+      requestRide({ riderName, pickup, drop, carType }){
+        const id = String(this._nextId++);
+        const now = (new Date()).toISOString();
+        const ride = {
+          id, riderName, pickup, drop, carType,
+          status: 'pending', // pending -> onroute -> completed
+          createdAt: now
+        };
+        this._rides.set(id, ride);
+        this._logEvent(`New ride requested: #${id} by ${riderName} (${carType}) pickup:${pickup} -> drop:${drop}`);
+        return ride;
+      }
+
+      listRides(){
+        return Array.from(this._rides.values()).sort((a,b)=> a.createdAt.localeCompare(b.createdAt));
+      }
+
+      updateRideStatus(id, status){
+        const ride = this._rides.get(id);
+        if(!ride) throw new Error('Ride not found');
+        ride.status = status;
+        this._logEvent(`Ride #${id} status changed to ${status}`);
+        return ride;
+      }
+
+      _logEvent(msg){
+        const ts = new Date().toLocaleString();
+        const line = `[${ts}] ${msg}`;
+        this._log.push(line);
+        // keep log reasonably small
+        if(this._log.length>200) this._log.shift();
+      }
+
+      getLog(){ return this._log.slice(); }
+
+      reset(){
+        this._rides.clear(); this._nextId = 1; this._log = [];
+        Server.#instance = null; // allow re-initialization
+      }
+    }
+
+    // ----------------- UI glue -----------------
+    const $serverState = document.getElementById('server-state');
+    const $console = document.getElementById('console');
+    const $rides = document.getElementById('rides');
+
+    function renderServerState(){
+      try{
+        const s = Server.getInstance();
+        $serverState.textContent = 'running';
+        renderConsole();
+        renderRides();
+      }catch(e){
+        $serverState.textContent = 'not initialized';
+      }
+    }
+
+    function renderConsole(){
+      const s = Server.getInstance();
+      $console.textContent = s.getLog().slice().reverse().join('\n');
+    }
+
+    function renderRides(){
+      const s = Server.getInstance();
+      const list = s.listRides();
+      $rides.innerHTML = '';
+      if(list.length===0){ $rides.innerHTML = '<div class="muted">No active rides</div>'; return }
+
+      for(const r of list){
+        const el = document.createElement('div');
+        el.className = 'ride';
+        el.innerHTML = `
+          <div class="meta">
+            <div>
+              <strong>#${r.id}</strong> — ${escapeHtml(r.riderName)} <span class="small">(${r.carType})</span>
+            </div>
+            <div class="small">${new Date(r.createdAt).toLocaleTimeString()}</div>
+          </div>
+          <div style="margin-top:6px">${escapeHtml(r.pickup)} → ${escapeHtml(r.drop)}</div>
+          <div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center">
+            <div class="label ${r.status==='pending'?'pending':r.status==='onroute'?'onroute':'completed'}">${r.status}</div>
+            <div class="actions">
+              ${r.status!=='completed'?`<button data-action="advance" data-id="${r.id}">Advance</button>`:''}
+              <button data-action="cancel" data-id="${r.id}" style="background:#ff6b6b">Cancel</button>
+            </div>
+          </div>
+        `;
+        $rides.appendChild(el);
+      }
+    }
+
+    function escapeHtml(s){ return String(s).replace(/[&<>\"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"})[ch]) }
+
+    // event wiring
+    document.getElementById('init-server').addEventListener('click', ()=>{
+      try{
+        Server.getInstance();
+        renderServerState();
+      }catch(e){ alert(e.message) }
+    });
+
+    document.getElementById('reset-server').addEventListener('click', ()=>{
+      try{
+        const s = Server.getInstance(); s.reset();
+      }catch(e){}
+      $serverState.textContent = 'not initialized';
+      $console.textContent = '';
+      $rides.innerHTML = '<div class="muted">No active rides</div>';
+    });
+
+    document.getElementById('request-btn').addEventListener('click', ()=>{
+      const name = document.getElementById('rider-name').value.trim()||'Anon';
+      const pickup = document.getElementById('pickup').value.trim()||'Unknown';
+      const drop = document.getElementById('drop').value.trim()||'Unknown';
+      const car = document.getElementById('car-type').value;
+
+      try{
+        const s = Server.getInstance();
+        const ride = s.requestRide({ riderName:name, pickup, drop, carType:car });
+        renderRides(); renderConsole();
+      }catch(e){
+        alert('Server not initialized. Click "Initialize Server" first.');
+      }
+    });
+
+    // delegate advance/cancel buttons
+    document.getElementById('rides').addEventListener('click',(ev)=>{
+      const btn = ev.target.closest('button'); if(!btn) return;
+      const action = btn.getAttribute('data-action'); const id = btn.getAttribute('data-id');
+      try{
+        const s = Server.getInstance();
+        if(action==='advance'){
+          const ride = s._rides.get(id);
+          if(ride.status==='pending') s.updateRideStatus(id,'onroute');
+          else if(ride.status==='onroute') s.updateRideStatus(id,'completed');
+        }else if(action==='cancel'){
+          s.updateRideStatus(id,'completed');
+          s._logEvent(`Ride #${id} cancelled`);
+        }
+        renderRides(); renderConsole();
+      }catch(e){ alert(e.message) }
+    });
+
+    // initial state
+    // do not auto-init; user must click to show the "private constructor" behavior
+    document.addEventListener('DOMContentLoaded', ()=>{
+      $rides.innerHTML = '<div class="muted">No active rides</div>';
+    });
+
+    // expose Server to window for debugging (demo only)
+    window._DemoServerClass = Server;
+
+  </script>
+</body>
+</html>
